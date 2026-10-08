@@ -1,0 +1,8 @@
+.create-playlist-modal {
+  max-width: 440px;
+}
+
+.create-playlist-modal textarea.input {
+  resize: vertical;
+  min-height: 72px;
+}

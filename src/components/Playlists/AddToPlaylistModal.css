@@ -1,0 +1,100 @@
+.add-playlist-modal {
+  max-width: 440px;
+}
+
+.target-track-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background-color: var(--bg-surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  gap: 2px;
+}
+
+.ttp-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ttp-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ttp-artist {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.new-playlist-quick-form {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-quick-create {
+  flex-shrink: 0;
+  padding: 8px 12px;
+}
+
+.existing-playlists-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.playlist-picker-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.playlist-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.playlist-picker-item:hover {
+  background-color: var(--bg-surface-3);
+  border-color: var(--border-default);
+}
+
+.ppi-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.ppi-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ppi-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.add-icon {
+  color: var(--text-muted);
+}
+
+.no-playlists-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 0;
+}
