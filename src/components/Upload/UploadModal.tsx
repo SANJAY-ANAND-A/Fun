@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, FileAudio, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, X, FileAudio, Folder, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Track } from '../../types/music';
 import './UploadModal.css';
 
@@ -16,36 +16,81 @@ interface QueuedFile {
   errorMessage?: string;
 }
 
+const SUPPORTED_EXTS = [
+  '.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a',
+  '.webm', '.opus', '.wma', '.aiff', '.aif', '.alac',
+  '.ape', '.mid', '.midi', '.mp4', '.mpeg', '.mpg',
+  '.mpga', '.mka', '.oga', '.weba'
+];
+
 export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUploadSuccess }) => {
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
+  const handleFiles = (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
     setUploadError(null);
-    const validExts = ['.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.webm', '.opus'];
     const newQueue: QueuedFile[] = [];
+    let skippedCount = 0;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const fileList = Array.from(files);
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      // Skip common non-audio system or image files without spamming error
+      const lowerName = file.name.toLowerCase();
+      if (
+        lowerName === 'thumbs.db' ||
+        lowerName === 'desktop.ini' ||
+        lowerName === '.ds_store' ||
+        lowerName.endsWith('.jpg') ||
+        lowerName.endsWith('.jpeg') ||
+        lowerName.endsWith('.png') ||
+        lowerName.endsWith('.webp') ||
+        lowerName.endsWith('.svg') ||
+        lowerName.endsWith('.txt') ||
+        lowerName.endsWith('.nfo') ||
+        lowerName.endsWith('.lrc')
+      ) {
+        skippedCount++;
+        continue;
+      }
+
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-      if (validExts.includes(ext) || file.type.startsWith('audio/')) {
+      const isAudio =
+        SUPPORTED_EXTS.includes(ext) ||
+        file.type.startsWith('audio/') ||
+        file.type.includes('mpeg') ||
+        file.type.includes('ogg') ||
+        file.type.includes('flac') ||
+        file.type.includes('wav') ||
+        file.type.includes('mp4') ||
+        file.type === 'application/octet-stream';
+
+      if (isAudio) {
         newQueue.push({
           file,
-          id: `${file.name}-${Date.now()}-${i}`,
+          id: `${file.name}-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
           status: 'pending'
         });
       } else {
-        setUploadError(`File "${file.name}" was skipped: unsupported audio format.`);
+        skippedCount++;
       }
     }
 
-    setQueuedFiles(prev => [...prev, ...newQueue]);
+    if (newQueue.length > 0) {
+      setQueuedFiles(prev => [...prev, ...newQueue]);
+    }
+
+    if (newQueue.length === 0 && skippedCount > 0) {
+      setUploadError('No supported audio files found. Supported formats include MP3, MPEG, WAV, FLAC, M4A, AAC, OGG, WMA, ALAC, AIFF.');
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -58,10 +103,57 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
+
+    // Support dropping folders and files via webkitGetAsEntry
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
+      const files: File[] = [];
+      const traverseEntry = async (entry: any): Promise<void> => {
+        if (!entry) return;
+        if (entry.isFile) {
+          return new Promise<void>((resolve) => {
+            entry.file((f: File) => {
+              files.push(f);
+              resolve();
+            }, () => resolve());
+          });
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          return new Promise<void>((resolve) => {
+            const readEntries = () => {
+              reader.readEntries(async (entries: any[]) => {
+                if (entries.length === 0) {
+                  resolve();
+                } else {
+                  for (const subEntry of entries) {
+                    await traverseEntry(subEntry);
+                  }
+                  readEntries();
+                }
+              }, () => resolve());
+            };
+            readEntries();
+          });
+        }
+      };
+
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) {
+          await traverseEntry(entry);
+        }
+      }
+
+      if (files.length > 0) {
+        handleFiles(files);
+        return;
+      }
+    }
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
@@ -89,7 +181,15 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
         body: formData
       });
 
-      const data = await response.json();
+      let data: any;
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        const cleanMessage = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        throw new Error(cleanMessage || `Server error (${response.status})`);
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Upload failed');
@@ -132,6 +232,29 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
         </div>
 
         <div className="modal-body">
+          {/* Hidden inputs without restrictive accept to prevent Windows Explorer file hiding */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            {...({ webkitdirectory: '', directory: '' } as any)}
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              handleFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+
           {/* Dropzone */}
           <div
             className={`upload-dropzone ${dragActive ? 'active' : ''}`}
@@ -146,21 +269,37 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpl
               if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
             }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="audio/*,.mp3,.wav,.flac,.ogg,.aac,.m4a,.webm,.opus"
-              style={{ display: 'none' }}
-              onChange={(e) => handleFiles(e.target.files)}
-            />
             <div className="dropzone-icon">
               <Upload size={28} />
             </div>
             <div className="dropzone-text">
               <p className="dropzone-main">Choose audio files or drag and drop here</p>
-              <p className="dropzone-sub">MP3, WAV, FLAC, AAC, OGG up to 100MB each</p>
+              <p className="dropzone-sub">MP3, MPEG, WAV, FLAC, M4A, AAC, OGG, WMA, ALAC up to 100MB each</p>
             </div>
+
+            <div className="dropzone-buttons" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <FileAudio size={14} />
+                <span>Browse Files</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => folderInputRef.current?.click()}
+                title="Select an entire folder of music"
+              >
+                <Folder size={14} />
+                <span>Select Folder</span>
+              </button>
+            </div>
+
+            <p className="dropzone-tip">
+              💡 Tip: All files are visible in the file dialog. You can also drag files directly from Windows Explorer into this window!
+            </p>
           </div>
 
           {uploadError && (

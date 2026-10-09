@@ -52,6 +52,25 @@
   color: var(--text-muted);
 }
 
+.dropzone-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.dropzone-tip {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 420px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-1);
+  border: 1px solid var(--border-subtle);
+}
+
 .upload-alert {
   display: flex;
   align-items: center;

@@ -58,12 +58,23 @@ const uploadAudio = multer({
     fileSize: 100 * 1024 * 1024 // 100MB limit
   },
   fileFilter: (_req, file, cb) => {
-    const allowedExts = ['.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.webm', '.opus'];
+    const allowedExts = [
+      '.mp3', '.wav', '.flac', '.ogg', '.aac', '.m4a', '.webm', '.opus',
+      '.wma', '.aiff', '.aif', '.alac', '.ape', '.mid', '.midi', '.mp4',
+      '.mpeg', '.mpg', '.mpga', '.mka', '.oga', '.weba'
+    ];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExts.includes(ext) || file.mimetype.startsWith('audio/')) {
+    const mime = (file.mimetype || '').toLowerCase();
+    if (
+      allowedExts.includes(ext) ||
+      mime.startsWith('audio/') ||
+      mime.includes('mpeg') ||
+      mime.includes('mp4') ||
+      mime === 'application/octet-stream'
+    ) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported audio format. Allowed: ${allowedExts.join(', ')}`));
+      cb(new Error(`Unsupported audio format (${ext || mime}). Allowed: ${allowedExts.join(', ')}`));
     }
   }
 });
@@ -232,7 +243,21 @@ app.get('/api/tracks/:id/stream', (req: Request, res: Response) => {
       '.aac': 'audio/aac',
       '.m4a': 'audio/mp4',
       '.webm': 'audio/webm',
-      '.opus': 'audio/opus'
+      '.opus': 'audio/opus',
+      '.wma': 'audio/x-ms-wma',
+      '.aiff': 'audio/aiff',
+      '.aif': 'audio/aiff',
+      '.alac': 'audio/mp4',
+      '.ape': 'audio/ape',
+      '.mid': 'audio/midi',
+      '.midi': 'audio/midi',
+      '.mp4': 'audio/mp4',
+      '.mpeg': 'audio/mpeg',
+      '.mpg': 'audio/mpeg',
+      '.mpga': 'audio/mpeg',
+      '.mka': 'audio/x-matroska',
+      '.oga': 'audio/ogg',
+      '.weba': 'audio/webm'
     };
     const contentType = mimeTypes[ext] || 'audio/mpeg';
 
@@ -277,14 +302,20 @@ app.get('/api/tracks/:id/stream', (req: Request, res: Response) => {
 });
 
 // POST /api/tracks/upload - Upload multiple audio files with metadata extraction
-app.post('/api/tracks/upload', uploadAudio.array('files', 20), async (req: Request, res: Response) => {
-  try {
-    const files = req.files as Express.Multer.File[];
-    if (!files || files.length === 0) {
-      return res.status(400).json({ success: false, error: 'No audio files received' });
+app.post('/api/tracks/upload', (req: Request, res: Response) => {
+  uploadAudio.array('files', 20)(req, res, async (err: any) => {
+    if (err) {
+      console.error('[Upload Multer Error]:', err);
+      return res.status(400).json({ success: false, error: err.message || 'File upload failed' });
     }
 
-    const createdTracks = [];
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ success: false, error: 'No audio files received' });
+      }
+
+      const createdTracks = [];
 
     for (const file of files) {
       const trackId = crypto.randomUUID();
@@ -363,6 +394,7 @@ app.post('/api/tracks/upload', uploadAudio.array('files', 20), async (req: Reque
     console.error('Upload error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+  });
 });
 
 // PATCH /api/tracks/:id - Edit track metadata
@@ -626,6 +658,17 @@ if (fs.existsSync(distDir)) {
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }
+
+// Global Express JSON error handler so HTML is never sent for API errors
+app.use((err: any, _req: Request, res: Response, _next: any) => {
+  console.error('[Global Error]:', err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      error: err.message || 'An unexpected server error occurred'
+    });
+  }
+});
 
 // Start server
 app.listen(PORT, async () => {
